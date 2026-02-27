@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = 'http://178.104.11.200:8080';
+const BACKEND_URL = 'https://api.bumm.io';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
