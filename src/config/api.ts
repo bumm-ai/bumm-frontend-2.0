@@ -1,6 +1,6 @@
 // API configuration for Bumm Backend
 // Direct backend access (only for local development)
-// export const API_BASE_URL = 'http://69.62.126.240:8081';
+// export const API_BASE_URL = 'http://178.104.11.200:8080';
 
 // Use Next.js API proxy to bypass CORS and Mixed Content
 export const API_BASE_URL = '/api/backend';
