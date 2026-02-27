@@ -57,7 +57,7 @@ async function handleRequest(
 ) {
   try {
     const path = pathSegments.join('/');
-    const url = `${BACKEND_URL}/${path}`;
+    const url = `${BACKEND_URL}/${path}${path.endsWith('/') ? '' : '/'}`;
     
     console.log(`🔄 Proxying ${method} request to: ${url}`);
     
