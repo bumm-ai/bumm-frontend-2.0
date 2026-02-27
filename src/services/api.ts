@@ -242,6 +242,44 @@ export class ApiClient {
     return this.post<CreateWalletResponse>(API_ENDPOINTS.USER_WALLET, request as unknown as Record<string, unknown>);
   }
 
+  // Chat AI message
+  async chatMessage(
+    message: string,
+    bummUid?: string | null
+  ): Promise<{
+    reply: string;
+    action: string;
+    bumm_uid: string | null;
+    status: string | null;
+    message_uid: string | null;
+  }> {
+    return this.post(API_ENDPOINTS.CHAT_MESSAGE, {
+      message,
+      bumm_uid: bummUid || null,
+    });
+  }
+
+  // Get chat history
+  async getChatHistory(
+    bummUid?: string,
+    limit?: number
+  ): Promise<{
+    messages: Array<{
+      uid: string;
+      role: string;
+      content: string;
+      created_at: string;
+      bumm_uid: string | null;
+      action: string | null;
+    }>;
+    bumm_uid: string | null;
+  }> {
+    const params: Record<string, unknown> = {};
+    if (bummUid) params.bumm_uid = bummUid;
+    if (limit) params.limit = limit;
+    return this.get(API_ENDPOINTS.CHAT_HISTORY, params);
+  }
+
   // Polling статуса задачи
   async pollTaskStatus<T>(
     taskType: 'generate' | 'audit' | 'build' | 'deploy',

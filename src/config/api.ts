@@ -16,7 +16,10 @@ export const API_ENDPOINTS = {
   BUMM_BUILD_STATUS: '/api/v1/bumm/build/status/',
   BUMM_DEPLOY: '/api/v1/bumm/deploy/',
   BUMM_DEPLOY_STATUS: '/api/v1/bumm/deploy/status/',
-  USER_WALLET: '/api/v1/user/wallet/'
+  USER_WALLET: '/api/v1/user/wallet/',
+  CHAT_MESSAGE: '/api/v1/chat/message/',
+  CHAT_HISTORY: '/api/v1/chat/history',
+  CHAT_UNLINKED: '/api/v1/chat/unlinked'
 } as const;
 
 // HTTP методы для каждого эндпоинта
@@ -31,12 +34,15 @@ export const API_METHODS = {
   [API_ENDPOINTS.BUMM_BUILD_STATUS]: 'GET',
   [API_ENDPOINTS.BUMM_DEPLOY]: 'POST',
   [API_ENDPOINTS.BUMM_DEPLOY_STATUS]: 'GET',
-  [API_ENDPOINTS.USER_WALLET]: 'POST'
+  [API_ENDPOINTS.USER_WALLET]: 'POST',
+  [API_ENDPOINTS.CHAT_MESSAGE]: 'POST',
+  [API_ENDPOINTS.CHAT_HISTORY]: 'GET',
+  [API_ENDPOINTS.CHAT_UNLINKED]: 'GET'
 } as const;
 
 // Request settings
 export const API_CONFIG = {
-  TIMEOUT: 10000, // 10 seconds
+  TIMEOUT: 60000, // 60 seconds (chat/generation can take 15-30 sec)
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 1000, // 1 second
   POLL_INTERVAL: 2000, // 2 seconds for status polling

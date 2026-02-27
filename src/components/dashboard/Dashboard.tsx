@@ -58,6 +58,8 @@ export default function Dashboard() {
     loadProjects,
     createProject,
     updateProjects,
+    sendChatMessage,
+    loadChatHistory,
   } = useBummApi();
   
   // Global error handler
@@ -131,6 +133,8 @@ export default function Dashboard() {
     ];
   });
   const [isBuilding, setIsBuilding] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState<{ projectUid: string; code: string } | null>(null);
+  const [generationAttemptFailed, setGenerationAttemptFailed] = useState(0);
 
   // Save message history for current project in localStorage
   useEffect(() => {
@@ -161,155 +165,155 @@ export default function Dashboard() {
   };
 
   const handleSendMessage = async (content: string, currentContractCode?: string) => {
-    console.log(`User message: "${content}"`);
-    
-    const newMessage: ChatMessage = {
+    // 1. Add user message to chat
+    const userMessage: ChatMessage = {
       id: generateUniqueMessageId(),
       content,
       timestamp: new Date(),
-      isUser: true
+      isUser: true,
     };
-    
-    setMessages(prev => [...prev, newMessage]);
-    
-    // Determine if project creation is needed based on keywords
-    const isGenerationRequest = isGenerationCommand(content);
-    
-    console.log(`Generation request: ${isGenerationRequest} for project: ${currentProject?.uid || 'none'}`);
-    
-    if (isGenerationRequest) { // Temporarily removed user check
-      // Credit check temporarily disabled - frontend only
-      // if (!hasEnoughCredits('generate')) {
-      //   const insufficientCreditsMessage: ChatMessage = {
-      //     id: generateUniqueMessageId(),
-      //     content: 'Insufficient credits for contract generation. Please buy more credits to continue.',
-      //     timestamp: new Date(),
-      //     isUser: false
-      //   };
-      //   setMessages(prev => [...prev, insufficientCreditsMessage]);
-      //   return;
-      // }
+    setMessages(prev => [...prev, userMessage]);
 
-      // Check if contract already exists in current project
-      const hasExistingContract = currentContractCode && currentContractCode.trim().length > 0;
-      
-      if (hasExistingContract) {
-        // If contract already exists, show notification only if not already shown
-        const alreadyExistsMessage = "A smart contract already exists in this project. To create a new smart contract, please create a new project manually. You can modify and edit the current smart contract code directly in the editor.";
-        if (!messages.some(m => m.content === alreadyExistsMessage)) {
-          const aiMessage: ChatMessage = {
-            id: generateUniqueMessageId(),
-            content: alreadyExistsMessage,
-            timestamp: new Date(),
-            isUser: false
-          };
-          setMessages(prev => [...prev, aiMessage]);
+    try {
+      // 2. If user pasted code in the editor, include it in the message
+      let messageToSend = content;
+      if (currentContractCode && currentContractCode.trim().length > 50) {
+        // Check if user is referring to the code in the editor
+        const codeRelatedWords = [
+          'this code',
+          'my code',
+          'the code',
+          'this contract',
+          'improve',
+          'fix',
+          'review',
+          'audit',
+          'build',
+        ];
+        const isReferringToCode = codeRelatedWords.some(w =>
+          content.toLowerCase().includes(w)
+        );
+
+        if (isReferringToCode) {
+          messageToSend = `${content}\n\nHere is the current contract code:\n\`\`\`rust\n${currentContractCode}\n\`\`\``;
         }
-        return;
       }
-      
-      console.log(`Starting generation request...`);
-      try {
+
+      // 3. Send to AI chat backend
+      const bummUid = currentProject?.bummUid || null;
+      const response = await sendChatMessage(messageToSend, bummUid);
+
+      // 4. Add AI response to chat
+      const aiMessage: ChatMessage = {
+        id: generateUniqueMessageId(),
+        content: response.reply,
+        timestamp: new Date(),
+        isUser: false,
+      };
+      setMessages(prev => [...prev, aiMessage]);
+
+      // 5. If AI triggered generation → track it; otherwise clear loading
+      if (response.action !== 'generate') {
+        setGenerationAttemptFailed(prev => prev + 1);
+      }
+      if (response.action === 'generate' && response.bumm_uid) {
+        console.log(`🚀 AI triggered generation: bumm_uid=${response.bumm_uid}`);
+
+        // Create or update project
         let project = currentProject;
-        let generatingMessage: ChatMessage | null = null;
-        
-        // Extract contract description from command
-        const contractDescription = extractContractDescription(content);
-        
-        // If no project or project in final state - create new project
-        if (!currentProject || ['deployed', 'completed'].includes(currentProject.status)) {
-          console.log(`🆕 Creating new project for generation. Current project:`, currentProject);
-          
-          // Add message about generation start
-          generatingMessage = {
-            id: generateUniqueMessageId(),
-            content: 'Starting smart contract generation...',
-            timestamp: new Date(),
-            isUser: false
-          };
-          setMessages(prev => [...prev, generatingMessage!]);
-          
-          // Start generation in new project
-          console.log(`Calling generateContract with description: "${contractDescription}"`);
-          project = await generateContract(contractDescription);
-          console.log(`generateContract returned project:`, project);
-          setCurrentProject(project);
-          console.log(`Current project set to:`, project);
-        } else {
-          // Project exists - generate in existing project
-          generatingMessage = {
-            id: generateUniqueMessageId(),
-            content: 'Starting smart contract generation in current project...',
-            timestamp: new Date(),
-            isUser: false
-          };
-          setMessages(prev => [...prev, generatingMessage!]);
-          
-          // Generate in existing project - returns backend bumm UID
-          const bummUid = await generateInProject(currentProject.uid, contractDescription);
-          project = { ...currentProject, bummUid }; // Store bummUid for tracking
+        if (!project) {
+          project = await createProject('New Contract');
         }
-        
-        // Track generation progress (use bummUid for API polling, project.uid for state)
-        const pollBummUid = project.bummUid || project.uid;
-        console.log(`🔄 Tracking generation: projectUid=${project.uid}, bummUid=${pollBummUid}`);
+
+        const updatedProject: Project = {
+          ...project,
+          bummUid: response.bumm_uid,
+          status: 'in-progress',
+        };
+        setCurrentProject(updatedProject);
+
+        // Add generation started message (will be updated with real status)
+        const statusMessageId = generateUniqueMessageId();
+        const genMessage: ChatMessage = {
+          id: statusMessageId,
+          content: '⚡ Initializing...',
+          timestamp: new Date(),
+          isUser: false,
+        };
+        setMessages(prev => [...prev, genMessage]);
+
+        // Start tracking generation status
         trackTaskStatus(
-          project.uid,
+          updatedProject.uid,
           'generate',
-          (progress) => {
-            // Progress updates handled by trackTaskStatus
+          progress => {
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === statusMessageId
+                  ? { ...m, content: `⚡ ${progress.message}` }
+                  : m
+              )
+            );
           },
-          (result) => {
-            // Generation completed - update project status
-            updateProjects(prev => prev.map(p => 
-              p.uid === project.uid 
-                ? { ...p, status: 'generated', task: null, updated_at: new Date().toISOString() }
-                : p
-            ));
+          result => {
+            // Generation complete — extract real code from API
+            const statusResp = result as { uid?: string; status?: string; code?: string };
+            const code = statusResp?.code;
+            if (code && typeof code === 'string') {
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem(`bumm_contract_code_${updatedProject.uid}`, code);
+                } catch (e) {
+                  console.warn('Failed to save code to localStorage:', e);
+                }
+              }
+              setGeneratedCode({ projectUid: updatedProject.uid, code });
+            }
 
-            // Analytics tracking
-            analytics.trackContractGeneration(extractContractDescription(content), project.uid);
-            analytics.trackCreditSpend('generate', 100, project.uid);
+            updateProjects(prev =>
+              prev.map(p =>
+                p.uid === updatedProject.uid
+                  ? {
+                      ...p,
+                      status: 'generated' as const,
+                      task: null,
+                      updated_at: new Date().toISOString(),
+                    }
+                  : p
+              )
+            );
 
-            // Add successful generation message
             const successMessage: ChatMessage = {
               id: generateUniqueMessageId(),
-              content: 'Smart contract generated successfully! The contract is ready for building and testing.',
+              content:
+                '✅ Smart contract generated successfully! You can review the code in the editor, then Build → Audit → Deploy.',
               timestamp: new Date(),
               isUser: false,
-              projectUid: project.uid,
-              taskType: 'generate'
             };
-            setMessages(prev => [...prev, successMessage]);   
+            setMessages(prev => [...prev, successMessage]);
           },
-          (error) => {
-            // Don't show generation errors to user
-            console.warn('Generation error (hidden from user):', error);
+          error => {
+            setGenerationAttemptFailed(prev => prev + 1);
+            const errorMessage: ChatMessage = {
+              id: generateUniqueMessageId(),
+              content: `❌ Generation failed: ${error}. Please try again.`,
+              timestamp: new Date(),
+              isUser: false,
+            };
+            setMessages(prev => [...prev, errorMessage]);
           },
-          pollBummUid // Pass backend bumm UID for API polling
+          response.bumm_uid
         );
-      } catch (err) {
-        console.error('GENERATION ERROR:', err);
-        const errorMessage: ChatMessage = {
-          id: generateUniqueMessageId(),
-          content: `Failed to start generation: ${err instanceof Error ? err.message : 'Unknown error'}`,
-          timestamp: new Date(),
-          isUser: false
-        };
-        setMessages(prev => [...prev, errorMessage]);
       }
-    } else {
-      console.log(`NOT a generation request - adding simple AI response`);
-      // Regular AI response (simulated for now)
-    setTimeout(() => {
-      const aiResponse: ChatMessage = {
+    } catch (err) {
+      console.error('handleSendMessage error:', err);
+      const errorMessage: ChatMessage = {
         id: generateUniqueMessageId(),
-        content: generateAIResponse(content),
+        content: 'Sorry, something went wrong. Please try again.',
         timestamp: new Date(),
-        isUser: false
+        isUser: false,
       };
-      setMessages(prev => [...prev, aiResponse]);
-    }, 1000);
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -364,10 +368,11 @@ export default function Dashboard() {
     setIsBuilding(true);
     
     try {
-      // Add message about build start
+      // Add build status message (will be updated with real status)
+      const buildStatusMessageId = generateUniqueMessageId();
       const buildingMessage: ChatMessage = {
-        id: generateUniqueMessageId(),
-        content: 'Starting contract build...',
+        id: buildStatusMessageId,
+        content: '🔧 Initializing build...',
         timestamp: new Date(),
         isUser: false
       };
@@ -383,7 +388,13 @@ export default function Dashboard() {
         project.uid,
         'build',
         (progress) => {
-          // Progress updates handled by trackTaskStatus
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === buildStatusMessageId
+                ? { ...m, content: `🔧 ${progress.message}` }
+                : m
+            )
+          );
         },
         (result) => {
           // Analytics tracking
@@ -429,8 +440,8 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeploy = async (code: string) => {
-    if (!user || !code.trim()) return;
+  const handleDeploy = async (code: string): Promise<string | undefined> => {
+    if (!user || !code.trim()) return undefined;
     
     try {
       // Add message about deployment start
@@ -476,6 +487,7 @@ export default function Dashboard() {
         isUser: false
       };
       setMessages(prev => [...prev, successMessage]);
+      return contractAddress;
     } catch (err) {
       const errorMessage: ChatMessage = {
         id: generateUniqueMessageId(),
@@ -484,6 +496,7 @@ export default function Dashboard() {
         isUser: false
       };
       setMessages(prev => [...prev, errorMessage]);
+      throw err;
     }
   };
 
@@ -740,6 +753,9 @@ export default function Dashboard() {
             projects={projects}
             isLoading={isLoading}
             error={error}
+            generatedCode={generatedCode}
+            onGeneratedCodeApplied={() => setGeneratedCode(null)}
+            generationAttemptFailed={generationAttemptFailed}
           />
         );
       

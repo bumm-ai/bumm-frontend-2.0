@@ -11,6 +11,8 @@ interface CodeGenerationStagesProps {
   onComplete: (code: string) => void;
   onAddAIMessage?: (message: string) => void;
   context?: string; // Context for determining contract type
+  /** When true, only animate (no fake code) — wait for external completion */
+  waitForExternalCode?: boolean;
 }
 
 type Stage = {
@@ -74,7 +76,7 @@ const stages: Stage[] = [
   }
 ];
 
-export const CodeGenerationStages = ({ isGenerating, onComplete, onAddAIMessage, context }: CodeGenerationStagesProps) => {
+export const CodeGenerationStages = ({ isGenerating, onComplete, onAddAIMessage, context, waitForExternalCode }: CodeGenerationStagesProps) => {
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
   const [completedStages, setCompletedStages] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
@@ -103,13 +105,16 @@ export const CodeGenerationStages = ({ isGenerating, onComplete, onAddAIMessage,
         setCompletedStages(prev => [...prev, currentStage.id]);
         
         if (currentStageIndex === stages.length - 1) {
-          // Last stage completed - generate code based on context
-          const contractType = getContractType(contextRef.current);
-          const generatedCode = contractCodes[contractType as keyof typeof contractCodes] || contractCodes.defi;
-          
-          setTimeout(() => {
-            onComplete(generatedCode);
-          }, 500);
+          if (waitForExternalCode) {
+            // Loop back to first stage — keep animating until real code arrives
+            setCurrentStageIndex(0);
+            setCompletedStages([]);
+          } else {
+            // Demo mode: use template code
+            const contractType = getContractType(contextRef.current);
+            const generatedCode = contractCodes[contractType as keyof typeof contractCodes] || contractCodes.defi;
+            setTimeout(() => onComplete(generatedCode), 500);
+          }
         } else {
           setCurrentStageIndex(prev => prev + 1);
         }
@@ -119,7 +124,7 @@ export const CodeGenerationStages = ({ isGenerating, onComplete, onAddAIMessage,
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isGenerating, currentStageIndex, onComplete]);
+  }, [isGenerating, currentStageIndex, onComplete, waitForExternalCode]);
 
   if (!isGenerating) return null;
 

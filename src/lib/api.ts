@@ -37,6 +37,7 @@ export interface BummGenerateResponse {
 export interface BummStatusResponse {
   uid: string;
   status: string;
+  code?: string; // Generated contract code when status is 'generated'
 }
 
 export interface CreateWalletRequest {

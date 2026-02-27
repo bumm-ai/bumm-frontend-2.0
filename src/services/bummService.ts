@@ -197,6 +197,17 @@ export const apiUtils = {
   },
 };
 
+ // Add chatService
+export const chatService = {
+  async sendMessage(message: string, bummUid?: string | null) {
+    return apiClient.chatMessage(message, bummUid);
+  },
+
+  async getHistory(bummUid?: string, limit?: number) {
+    return apiClient.getChatHistory(bummUid, limit);
+  },
+};
+
 // Export types for use in other files
 export type {
   BummProject,

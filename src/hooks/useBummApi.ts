@@ -1,15 +1,15 @@
+import { bummService, userService, chatService } from '@/services/bummService';
 import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { 
-  apiClient, 
-  BummProject, 
-  BummGenerateRequest, 
+import {
+  apiClient,
+  BummProject,
+  BummGenerateRequest,
   TaskStatus,
   isTaskCompleted,
   isTaskError,
-  getStatusDisplayName
+  getStatusDisplayName,
 } from '@/lib/api';
-import { bummService, userService } from '@/services/bummService';
 import { mockApiClient } from '@/lib/mockApi';
 import { Project, ChatMessage, GenerationProgress, User } from '@/types/dashboard';
 
@@ -110,6 +110,16 @@ export const useBummApi = () => {
       throw err;
     }
   }, [useMockApi]);
+
+  // Mock chat for fallback (when backend is unavailable)
+  const mockChatMessage = async (message: string) => ({
+    reply:
+      "Backend is temporarily unavailable. Please check your connection and try again. What kind of smart contract would you like to create?",
+    action: 'none' as const,
+    bumm_uid: null,
+    status: null,
+    message_uid: null,
+  });
   
   // User initialization
   const initializeUser = useCallback(async () => {
@@ -587,6 +597,46 @@ export const useBummApi = () => {
     }
   };
 
+  const sendChatMessage = useCallback(
+    async (message: string, bummUid?: string | null) => {
+      try {
+        const response = await apiCall(
+          () => chatService.sendMessage(message, bummUid),
+          () => mockChatMessage(message),
+          'chat message'
+        );
+        return response;
+      } catch (err) {
+        console.error('Chat message failed:', err);
+        return {
+          reply: 'Sorry, something went wrong. Please try again.',
+          action: 'none',
+          bumm_uid: null,
+          status: null,
+          message_uid: null,
+        };
+      }
+    },
+    [apiCall]
+  );
+
+  const loadChatHistory = useCallback(
+    async (bummUid?: string) => {
+      try {
+        const response = await apiCall(
+          () => chatService.getHistory(bummUid, 50),
+          async () => ({ messages: [], bumm_uid: null }),
+          'load chat history'
+        );
+        return response;
+      } catch (err) {
+        console.error('Failed to load chat history:', err);
+        return { messages: [], bumm_uid: null };
+      }
+    },
+    [apiCall]
+  );
+
   // Task status tracking
   // bummUid: the actual backend bumm UID to use for API polling (may differ from projectUid)
   const trackTaskStatus = useCallback(async (
@@ -820,6 +870,8 @@ export const useBummApi = () => {
     initializeUser,
     createProject,
     updateProjects,
+    sendChatMessage,
+    loadChatHistory,
     useMockApi, // Export for debugging
   };
 };

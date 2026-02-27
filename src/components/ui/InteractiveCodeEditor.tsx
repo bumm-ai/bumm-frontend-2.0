@@ -18,6 +18,7 @@ interface InteractiveCodeEditorProps {
   context?: string; // Context for determining contract type
   isTablet?: boolean;
   isAutoDemo?: boolean; // For auto demo mode styling
+  useRealApi?: boolean; // When true, show simple loader (no demo templates)
 }
 
 export const InteractiveCodeEditor = ({ 
@@ -29,7 +30,8 @@ export const InteractiveCodeEditor = ({
   onAddAIMessage,
   context,
   isTablet = false,
-  isAutoDemo = false
+  isAutoDemo = false,
+  useRealApi = false
 }: InteractiveCodeEditorProps) => {
   const [code, setCode] = useState(initialCode);
   const [isEditing, setIsEditing] = useState(false);
@@ -54,18 +56,6 @@ export const InteractiveCodeEditor = ({
       }
     }
   }, [initialCode]);
-
-  useEffect(() => {
-    // Initialize PrismJS on client side
-    if (typeof window !== 'undefined') {
-      import('prismjs').then((Prism) => {
-        // Force re-highlight if needed
-        if (code) {
-          setCode(code); // Trigger re-render
-        }
-      });
-    }
-  }, []);
 
   const handleCodeChange = (newCode: string) => {
     setCode(newCode);
@@ -106,21 +96,8 @@ export const InteractiveCodeEditor = ({
     return code;
   };
 
-  const defaultCode = `use anchor_lang::prelude::*;
-
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
-
-#[program]
-pub mod my_contract {
-    use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        // Contract logic will appear here
-        Ok(())
-    }
-}`;
-
-  const displayCode = code || (source === 'ai-generated' ? defaultCode : '');
+  // No demo/placeholder code on platform — show only real content
+  const displayCode = code;
 
   if (isGenerating) {
     return (
@@ -129,6 +106,7 @@ pub mod my_contract {
         onComplete={handleGenerationComplete}
         onAddAIMessage={onAddAIMessage}
         context={context || ''}
+        waitForExternalCode={useRealApi}
       />
     );
   }

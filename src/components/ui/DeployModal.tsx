@@ -8,7 +8,8 @@ import { DancingDotsLoader } from './DancingDotsLoader';
 interface DeployModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete?: () => void;
+  onDeploy: (code: string) => Promise<string | undefined>;
+  onComplete?: (address?: string) => void;
   contractCode: string;
   network: 'devnet' | 'mainnet';
 }
@@ -65,60 +66,59 @@ const deployStages: DeployStage[] = [
   }
 ];
 
-export const DeployModal = ({ isOpen, onClose, onComplete, contractCode, network }: DeployModalProps) => {
+export const DeployModal = ({ isOpen, onClose, onDeploy, onComplete, contractCode, network }: DeployModalProps) => {
   const [stages, setStages] = useState<DeployStage[]>(deployStages);
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
   const [deploymentStatus, setDeploymentStatus] = useState<'deploying' | 'success' | 'error'>('deploying');
   const [contractAddress, setContractAddress] = useState('');
   const [transactionHash, setTransactionHash] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset states when modal closes
       setStages(deployStages.map(stage => ({ ...stage, status: 'pending' })));
       setCurrentStageIndex(0);
       setDeploymentStatus('deploying');
       setContractAddress('');
       setTransactionHash('');
+      setErrorMessage('');
       return;
     }
 
-    // Start deployment process
-    let timeoutId: NodeJS.Timeout;
-    
-    if (currentStageIndex < stages.length && deploymentStatus === 'deploying') {
-      const currentStage = stages[currentStageIndex];
-      
-      // Set current stage as active
-      setStages(prev => prev.map((stage, index) => ({
-        ...stage,
-        status: index === currentStageIndex ? 'active' : index < currentStageIndex ? 'completed' : 'pending'
-      })));
+    // Run real deploy when modal opens
+    let cancelled = false;
+    const runDeploy = async () => {
+      try {
+        setDeploymentStatus('deploying');
+        setCurrentStageIndex(0);
+        setStages(prev => prev.map((s, i) => ({ ...s, status: i === 0 ? 'active' : 'pending' })));
 
-      timeoutId = setTimeout(() => {
-        // Complete current stage
-        setStages(prev => prev.map((stage, index) => ({
-          ...stage,
-          status: index <= currentStageIndex ? 'completed' : 'pending'
-        })));
+        const address = await onDeploy(contractCode);
+        if (cancelled) return;
 
-        if (currentStageIndex === stages.length - 1) {
-          // All stages completed
+        if (address) {
+          setContractAddress(address);
+          setTransactionHash('');
+          setStages(prev => prev.map(s => ({ ...s, status: 'completed' })));
           setDeploymentStatus('success');
-          setContractAddress('7xKgF8Mz9QW4NLcv6BsxR3Hp2V1dU9tY5eA3fN6jM8sL');
-          setTransactionHash('3K7mP9xQ2wV8nF1dG5eR4tY6uI0oL7jH9sA2bC4zX8vN');
-          // Call onComplete if provided
-          onComplete?.();
+          onComplete?.(address);
         } else {
-          setCurrentStageIndex(prev => prev + 1);
+          setDeploymentStatus('error');
+          setErrorMessage('Deployment completed but no address returned');
         }
-      }, Math.max(currentStage.duration * 0.5, 500)); // Speed up by 2x, minimum 500ms
-    }
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      } catch (err) {
+        if (cancelled) return;
+        setDeploymentStatus('error');
+        setErrorMessage(err instanceof Error ? err.message : 'Deployment failed');
+        setStages(prev => prev.map((s, i) => ({
+          ...s,
+          status: i <= currentStageIndex ? (i < currentStageIndex ? 'completed' : 'error') : 'pending'
+        })));
+      }
     };
-  }, [isOpen, currentStageIndex, stages.length, deploymentStatus]);
+    runDeploy();
+    return () => { cancelled = true; };
+  }, [isOpen, contractCode, onDeploy]);
 
   const getStageColor = (status: string) => {
     switch (status) {
@@ -187,6 +187,22 @@ export const DeployModal = ({ isOpen, onClose, onComplete, contractCode, network
 
             {/* Content */}
             <div className="p-4">
+              {deploymentStatus === 'error' && (
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center">
+                    <AlertCircle className="w-8 h-8 text-red-400 mb-2" />
+                    <h3 className="text-base font-semibold text-white mb-1">Deployment Failed</h3>
+                    <p className="text-gray-400 text-xs text-center">{errorMessage}</p>
+                  </div>
+                  <button
+                    onClick={onClose}
+                    className="w-full px-4 py-3 bg-[#333] text-white rounded-lg hover:bg-[#444] transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+
               {deploymentStatus === 'deploying' && (
                 <div className="space-y-4">
                   {/* Current Stage Info */}

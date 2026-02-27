@@ -164,7 +164,7 @@ Users type natural language descriptions like "Create an NFT marketplace" and th
 The backend URL is configured in `src/app/api/backend/[...path]/route.ts`:
 
 ```typescript
-const BACKEND_URL = 'http://69.62.126.240:8081';
+const BACKEND_URL = 'https://api.bumm.io';
 ```
 
 Change this to point to your backend instance.

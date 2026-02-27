@@ -21,7 +21,7 @@ interface ChatScreenProps {
   onSendMessage: (message: string, currentContractCode?: string) => void;
   onAddAIMessage: (message: string) => void;
   onBuild: (code: string) => void;
-  onDeploy: (code: string) => void;
+  onDeploy: (code: string) => Promise<string | undefined>;
   onGenerateContract?: (description: string) => Promise<Project>;
   onCreateProject?: (name: string) => Promise<Project>;
   onCreateNew?: () => void;
@@ -40,6 +40,9 @@ interface ChatScreenProps {
   projects?: Project[];
   isLoading?: boolean;
   error?: string | null;
+  generatedCode?: { projectUid: string; code: string } | null;
+  onGeneratedCodeApplied?: () => void;
+  generationAttemptFailed?: number;
 }
 
 export default function ChatScreen({ 
@@ -65,7 +68,10 @@ export default function ChatScreen({
   user,
   projects = [],
   isLoading = false,
-  error
+  error,
+  generatedCode,
+  onGeneratedCodeApplied,
+  generationAttemptFailed = 0
 }: ChatScreenProps) {
   const [inputValue, setInputValue] = useState('');
   const [mobileActiveTab, setMobileActiveTab] = useState<'chat' | 'code' | 'network'>('chat');
@@ -294,6 +300,30 @@ export default function ChatScreen({
     }
   }, [lastUpdateDate, currentProject]);
 
+  // Sync deployed address from parent (when deploy completes from Dashboard)
+  useEffect(() => {
+    if (currentProject?.contractAddress) {
+      setDeployedContractAddress(currentProject.contractAddress);
+      setIsContractDeployed(true);
+    }
+  }, [currentProject?.contractAddress]);
+
+  // Apply real generated code from API (no demo templates)
+  useEffect(() => {
+    if (generatedCode && generatedCode.projectUid === currentProject?.uid && generatedCode.code) {
+      setContractCode(generatedCode.code);
+      setIsGenerating(false);
+      setActionButtonState('build'); // Build → Audit → Publish flow
+      onGeneratedCodeApplied?.();
+    }
+  }, [generatedCode, currentProject?.uid, onGeneratedCodeApplied]);
+
+  // Clear loading state when generation fails (e.g. timeout)
+  useEffect(() => {
+    if (generationAttemptFailed > 0) {
+      setIsGenerating(false);
+    }
+  }, [generationAttemptFailed]);
 
   const handleSend = () => {
     if (inputValue.trim()) {
@@ -342,32 +372,8 @@ export default function ChatScreen({
 
   const handleActionClick = async () => {
     if (actionButtonState === 'review') {
-      try {
-        // Create project if it doesn't exist
-        if (!currentProject && onCreateProject) {
-          const projectName = `Code Review ${new Date().toLocaleDateString()}`;
-          const newProject = await onCreateProject(projectName);
-          onAddAIMessage("📝 Project created for code review. Analyzing your smart contract...");
-        } else {
-          onAddAIMessage("📝 Analyzing your smart contract code...");
-        }
-        
-        // Simulate AI analysis
-      setActionButtonState('building');
-        
-        setTimeout(() => {
-          onAddAIMessage("Code analysis complete! Found several optimization opportunities and potential improvements. The contract structure looks good overall.");
-      setTimeout(() => {
-            onAddAIMessage("Review finished! Applied necessary fixes and optimizations. Your contract is now ready for building.");
-        setActionButtonState('build');
-          }, 1500);
-      }, 2000);
-        
-      } catch (err) {
-        console.error('Failed to review contract:', err);
-        onAddAIMessage(`Failed to review contract: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        setActionButtonState('review');
-      }
+      // Code is ready for building — open Build modal directly (no demo simulation)
+      setIsBuildModalOpen(true);
     } else if (actionButtonState === 'build') {
       // Open build modal
       setIsBuildModalOpen(true);
@@ -418,17 +424,14 @@ export default function ChatScreen({
     setIsBuildModalOpen(false);
   };
 
-  const handleDeployComplete = () => {
-    // Call onDeploy with code
-    onDeploy(contractCode);
-    
-    // Update local state
+  const handleDeployComplete = (address?: string) => {
     const now = new Date();
     setIsContractDeployed(true);
-    setDeployedContractAddress('ExampleContract123...ABC'); // Example address
+    setDeployedContractAddress(address ?? '');
     setDeploymentDate(now);
     setLastUpdateDate(now);
-    setActionButtonState('upgrade'); // After deploy show Upgrade
+    setActionButtonState('upgrade');
+    setIsDeployModalOpen(false);
   };
 
   const handleContractFreeze = () => {
@@ -640,6 +643,7 @@ export default function ChatScreen({
               onGenerationComplete={handleGenerationComplete}
               onAddAIMessage={onAddAIMessage}
               placeholder="Paste your smart contract here or chat with AI to generate one..."
+              useRealApi
             />
         </div>
         
@@ -798,6 +802,7 @@ export default function ChatScreen({
                 onGenerationComplete={handleGenerationComplete}
                 onAddAIMessage={onAddAIMessage}
                 placeholder="Paste your smart contract here or chat with AI to generate one..."
+                useRealApi
               />
             </div>
             
@@ -869,6 +874,7 @@ export default function ChatScreen({
       <DeployModal 
         isOpen={isDeployModalOpen}
         onClose={handleDeployModalClose}
+        onDeploy={onDeploy}
         onComplete={handleDeployComplete}
         contractCode={contractCode}
         network="devnet"
