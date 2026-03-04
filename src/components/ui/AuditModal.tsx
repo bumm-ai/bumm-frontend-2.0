@@ -111,61 +111,86 @@ export const AuditModal = ({ isOpen, onClose, onComplete, contractCode, onAddMes
 
   useEffect(() => {
     if (!isOpen) {
-      setCurrentStep(0);
-      setIsCompleted(false);
-      setAuditResult(null);
-      setIsRerunning(false);
-      setDisplaySteps(auditSteps);
-      setPatchesApplied(false);
+      setCurrentStep(0); setIsCompleted(false); setAuditResult(null);
       return;
     }
+    let cancelled = false;
+    let animInterval: NodeJS.Timeout;
 
-    const timer = setInterval(() => {
-      setCurrentStep(prev => {
-        if (prev >= displaySteps.length - 1) {
-          clearInterval(timer);
-          // Simulate audit completion with vulnerabilities
-          setTimeout(() => {
+    const runAudit = async () => {
+      try {
+        const userId = localStorage.getItem('bumm_user_uid') || '';
+        const startRes = await fetch('/api/backend/api/v1/bumm/audit/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+          body: JSON.stringify({ text: contractCode }),
+        });
+        if (!startRes.ok) {
+          if (startRes.status === 402) {
             setIsCompleted(true);
-            const vulnerabilityList: Vulnerability[] = [
-              { name: 'Missing owner and vault address validation', severity: 'critical' },
-              { name: 'Lack of token mint verification', severity: 'critical' },
-              { name: 'First liquidity provider economic exploit', severity: 'critical' },
-              { name: 'Integer overflow/underflow risk', severity: 'medium' },
-              { name: 'Division by zero possibility', severity: 'medium' },
-              { name: 'Unhandled zero amount case', severity: 'medium' }
-            ];
-            
-            setAuditResult({
-              securityScore: 45, // Always low score for testing
-              vulnerabilities: {
-                critical: 3,
-                high: 0,
-                medium: 3,
-                low: 0
-              },
-              vulnerabilityList,
-              hasPatches: true // Always has patches for testing
-            });
-            
-            // Prevent duplicate audit results message
-            //if (onAddMessage) {
-            //  const auditMessage = 'Audit completed! Found 6 security vulnerabilities (3 critical, 3 medium). Contract security score: 45/100. Review recommended before deployment.';
-            //  if (!messages?.some(m => m.content.includes('Audit completed!') && m.content.includes('6 security vulnerabilities'))) {
-             //   setTimeout(() => {
-              //    onAddMessage(auditMessage);
-               // }, 500);
-             // }
-           // }
-          }, 1000); // Reduced from 2000 to 1000
-          return prev;
+            onAddMessage?.('Insufficient credits for audit.');
+            return;
+          }
+          throw new Error('Audit start failed');
         }
-        return prev + 1;
-      });
-    }, 1500); // Reduced from 3000 to 1500 (2x faster)
+        const { uid: auditUid } = await startRes.json();
 
-    return () => clearInterval(timer);
-  }, [isOpen, onAddMessage]);
+        // Animate steps while polling
+        let step = 0;
+        animInterval = setInterval(() => {
+          if (cancelled) return;
+          step = Math.min(step + 1, displaySteps.length - 2);
+          setCurrentStep(step);
+        }, 2000);
+
+        // Poll status
+        let attempts = 0;
+        while (!cancelled && attempts < 60) {
+          await new Promise(r => setTimeout(r, 3000));
+          attempts++;
+          const res = await fetch(`/api/backend/api/v1/bumm/audit/status/${auditUid}/`, {
+            headers: { 'x-user-id': userId },
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          if (data.status === 'audited' && data.report) {
+            clearInterval(animInterval);
+            setCurrentStep(displaySteps.length - 1);
+
+            let report;
+            try { report = JSON.parse(data.report); }
+            catch { report = { issues: [], summary: data.report }; }
+
+            const issues = report.issues || [];
+            const critical = issues.filter((i: any) => i.severity === 'critical').length;
+            const high = issues.filter((i: any) => i.severity === 'high').length;
+            const medium = issues.filter((i: any) => i.severity === 'medium').length;
+            const low = issues.filter((i: any) => ['low','info'].includes(i.severity)).length;
+            const score = Math.max(0, 100 - critical*25 - high*15 - medium*5 - low);
+
+            setAuditResult({
+              securityScore: score,
+              vulnerabilities: { critical, high, medium, low },
+              vulnerabilityList: issues.map((i: any) => ({ name: i.title, severity: i.severity })),
+              hasPatches: critical > 0 || high > 0,
+            });
+            setIsCompleted(true);
+            onAddMessage?.(`Audit done! ${issues.length} issues, score ${score}/100`);
+            return;
+          }
+          if (data.status === 'error') throw new Error('Audit failed on backend');
+        }
+      } catch (err) {
+        console.error('Audit error:', err);
+        setIsCompleted(true);
+        setAuditResult({ securityScore: 0, vulnerabilities: {critical:0,high:0,medium:0,low:0},
+          vulnerabilityList: [{name: String(err), severity: 'critical'}], hasPatches: false });
+      }
+    };
+    runAudit();
+    return () => { cancelled = true; if (animInterval) clearInterval(animInterval); };
+  }, [isOpen, contractCode]);
 
   const handleNextStep = () => {
     onComplete(false);

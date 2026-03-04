@@ -518,8 +518,16 @@ export const useBummApi = () => {
       setIsLoading(true);
       setError(null);
 
+      let textToSend: string = code;
+      if (projectUid) {
+        const proj = projects.find(p => p.uid === projectUid);
+        if (proj?.bummUid) {
+          textToSend = proj.bummUid;
+        }
+      }
+
       const response = await apiCall(
-        () => bummService.buildBumm(code),
+        () => bummService.buildBumm(textToSend),
         () => mockApiClient.buildContract({ text: code }),
         'build contract'
       );
@@ -581,8 +589,15 @@ export const useBummApi = () => {
       setIsLoading(true);
       setError(null);
 
+      let textToSend: string = code;
+      // Try to find project with this code and use its bummUid when available
+      const projWithCode = projects.find(p => p.code === code && p.bummUid);
+      if (projWithCode?.bummUid) {
+        textToSend = projWithCode.bummUid;
+      }
+
       const contractAddress = await apiCall(
-        () => bummService.deployBumm(code),
+        () => bummService.deployBumm(textToSend),
         () => mockApiClient.deployContract({ text: code }),
         'deploy contract'
       );

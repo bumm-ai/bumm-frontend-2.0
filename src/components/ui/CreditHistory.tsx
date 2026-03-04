@@ -25,38 +25,14 @@ export const CreditHistory = ({ isOpen, onClose }: CreditHistoryProps) => {
   const loadHistory = async () => {
     setIsLoading(true);
     try {
-      // Mock data for demonstration
-      const mockTransactions: CreditTransaction[] = [
-        {
-          id: '1',
-          operationType: 'generate',
-          creditsSpent: 100,
-          usdEquivalent: 1.0,
-          description: 'Smart contract generation',
-          createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 минут назад
-          bummId: 'bumm_123'
-        },
-        {
-          id: '2',
-          operationType: 'audit',
-          creditsSpent: 50,
-          usdEquivalent: 0.5,
-          description: 'Code security audit',
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 часа назад
-          bummId: 'bumm_456'
-        },
-        {
-          id: '3',
-          operationType: 'build',
-          creditsSpent: 25,
-          usdEquivalent: 0.25,
-          description: 'Contract compilation',
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), // 4 часа назад
-          bummId: 'bumm_789'
-        }
-      ];
-      
-      setTransactions(mockTransactions);
+      const userId = localStorage.getItem('bumm_user_uid') || '';
+      const res = await fetch(`/api/backend/api/v1/credits/history?limit=50`, {
+        headers: { 'x-user-id': userId }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTransactions(data.transactions || []);
+      }
     } catch (error) {
       console.error('Failed to load credit history:', error);
     } finally {

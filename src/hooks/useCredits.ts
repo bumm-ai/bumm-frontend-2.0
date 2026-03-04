@@ -30,34 +30,39 @@ export const useCredits = () => {
     return userId || 'anonymous';
   }, [publicKey]);
 
-  // Load credit balance (temporarily disabled - frontend only)
+  // Load credit balance from backend (with local fallback)
   const loadBalance = useCallback(async () => {
     if (!connected || !publicKey) return;
-
     setIsLoading(true);
-    setError(null);
-
     try {
-      // Temporarily use only local data
       const userId = getUserId();
-      const localBalance = localStorage.getItem(`credits_${userId}`);
-      
-      if (localBalance) {
-        setBalance(JSON.parse(localBalance));
+      const response = await fetch(`/api/backend/api/v1/credits/balance`, {
+        headers: { 'x-user-id': userId }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBalance({
+          balance: data.balance,
+          totalPurchased: data.totalPurchased,
+          totalSpent: data.totalSpent,
+          updatedAt: data.updatedAt
+        });
       } else {
-        // Set initial balance
-        const initialBalance = {
-          balance: 1000, // Initial credits
-          totalPurchased: 1000,
-          totalSpent: 0,
-          updatedAt: new Date().toISOString()
-        };
-        setBalance(initialBalance);
-        localStorage.setItem(`credits_${userId}`, JSON.stringify(initialBalance));
+        // Fallback to localStorage
+        const local = localStorage.getItem(`credits_${userId}`);
+        if (local) {
+          setBalance(JSON.parse(local));
+        } else {
+          setBalance({
+            balance: 1000,
+            totalPurchased: 1000,
+            totalSpent: 0,
+            updatedAt: new Date().toISOString()
+          });
+        }
       }
     } catch (err) {
-      console.error('Failed to load credit balance:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load balance');
+      console.error('Failed to load balance:', err);
     } finally {
       setIsLoading(false);
     }

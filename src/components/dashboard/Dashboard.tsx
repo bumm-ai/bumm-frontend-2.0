@@ -17,7 +17,7 @@ import ChatScreen from './ChatScreen';
 
 export default function Dashboard() {
   const { disconnect } = useWallet();
-  const { spendCredits, hasEnoughCredits } = useCredits();
+  const { hasEnoughCredits, loadBalance } = useCredits();
   const analytics = useAnalytics();
   const [currentState, setCurrentState] = useState<DashboardState>('login');
   
@@ -165,6 +165,17 @@ export default function Dashboard() {
   };
 
   const handleSendMessage = async (content: string, currentContractCode?: string) => {
+    // Check credits before triggering generation via chat
+    if (!hasEnoughCredits('generate')) {
+      const insufficientCreditsMessage: ChatMessage = {
+        id: generateUniqueMessageId(),
+        content: 'Insufficient credits for contract generation. Please top up your credits to continue.',
+        timestamp: new Date(),
+        isUser: false,
+      };
+      setMessages(prev => [...prev, insufficientCreditsMessage]);
+      return;
+    }
     // 1. Add user message to chat
     const userMessage: ChatMessage = {
       id: generateUniqueMessageId(),
@@ -291,6 +302,8 @@ export default function Dashboard() {
               isUser: false,
             };
             setMessages(prev => [...prev, successMessage]);
+            // Refresh credits after backend deduction
+            loadBalance();
           },
           error => {
             setGenerationAttemptFailed(prev => prev + 1);

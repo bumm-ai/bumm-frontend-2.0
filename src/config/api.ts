@@ -7,19 +7,26 @@ export const API_BASE_URL = '/api/backend';
 
 export const API_ENDPOINTS = {
   HEALTH: '/health/',
-  BUMM_LIST: '/api/v1/bumm/list/',
-  BUMM_GENERATE: '/api/v1/bumm/generate/',
-  BUMM_STATUS_GENERATE: '/api/v1/bumm/status/generate/',
-  BUMM_AUDIT: '/api/v1/bumm/audit/',
-  BUMM_AUDIT_STATUS: '/api/v1/bumm/audit/status/',
-  BUMM_BUILD: '/api/v1/bumm/build/',
-  BUMM_BUILD_STATUS: '/api/v1/bumm/build/status/',
-  BUMM_DEPLOY: '/api/v1/bumm/deploy/',
-  BUMM_DEPLOY_STATUS: '/api/v1/bumm/deploy/status/',
+  BUMM_LIST: '/api/v1/list/',
+  BUMM_GENERATE: '/api/v1/generate/',
+  BUMM_STATUS_GENERATE: '/api/v1/status/generate/',
+  BUMM_AUDIT: '/api/v1/audit/',
+  BUMM_AUDIT_STATUS: '/api/v1/audit/status/',
+  BUMM_BUILD: '/api/v1/build/',
+  BUMM_BUILD_STATUS: '/api/v1/build/status/',
+  BUMM_DEPLOY: '/api/v1/deploy/',
+  BUMM_DEPLOY_STATUS: '/api/v1/deploy/status/',
   USER_WALLET: '/api/v1/user/wallet/',
   CHAT_MESSAGE: '/api/v1/chat/message/',
   CHAT_HISTORY: '/api/v1/chat/history',
-  CHAT_UNLINKED: '/api/v1/chat/unlinked'
+  CHAT_UNLINKED: '/api/v1/chat/unlinked',
+  // Credits (NEW)
+  CREDITS_BALANCE: '/api/v1/credits/balance',
+  CREDITS_RATES: '/api/v1/credits/rates',
+  CREDITS_PRICING: '/api/v1/credits/pricing',
+  CREDITS_PURCHASE: '/api/v1/credits/purchase',
+  CREDITS_SPEND: '/api/v1/credits/spend',
+  CREDITS_HISTORY: '/api/v1/credits/history',
 } as const;
 
 // HTTP методы для каждого эндпоинта
