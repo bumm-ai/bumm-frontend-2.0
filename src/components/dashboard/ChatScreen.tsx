@@ -391,11 +391,10 @@ export default function ChatScreen({
   };
 
   const handleBuildComplete = () => {
-    // After successful build show Audit button
+    // After successful build show Audit button and open Audit modal (do NOT start another build)
     setActionButtonState('audit');
-    
-    // Call onBuild with code
-    onBuild(contractCode);
+    setIsBuildModalOpen(false);
+    setIsAuditModalOpen(true);
   };
 
   const handleAuditClick = () => {
