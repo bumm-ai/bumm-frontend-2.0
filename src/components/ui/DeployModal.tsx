@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { X, Rocket, CheckCircle, AlertCircle, Settings, Upload, Globe, ExternalLink } from 'lucide-react';
 import { DancingDotsLoader } from './DancingDotsLoader';
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api';
 
 interface DeployModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface DeployModalProps {
   onComplete?: (address?: string) => void;
   contractCode: string;
   network: 'devnet' | 'mainnet';
+  bummUid?: string;
 }
 
 type DeployStage = {
@@ -66,7 +68,7 @@ const deployStages: DeployStage[] = [
   }
 ];
 
-export const DeployModal = ({ isOpen, onClose, onDeploy, onComplete, contractCode, network }: DeployModalProps) => {
+export const DeployModal = ({ isOpen, onClose, onDeploy, onComplete, contractCode, network, bummUid }: DeployModalProps) => {
   const [stages, setStages] = useState<DeployStage[]>(deployStages);
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
   const [deploymentStatus, setDeploymentStatus] = useState<'deploying' | 'success' | 'error'>('deploying');
@@ -85,27 +87,58 @@ export const DeployModal = ({ isOpen, onClose, onDeploy, onComplete, contractCod
       return;
     }
 
-    // Run real deploy when modal opens
     let cancelled = false;
-    const runDeploy = async () => {
+
+    const startDeploy = async () => {
       try {
         setDeploymentStatus('deploying');
         setCurrentStageIndex(0);
         setStages(prev => prev.map((s, i) => ({ ...s, status: i === 0 ? 'active' : 'pending' })));
 
-        const address = await onDeploy(contractCode);
-        if (cancelled) return;
+        const userId = localStorage.getItem('bumm_user_uid') || '';
+        const textToSend = bummUid || contractCode;
 
-        if (address) {
-          setContractAddress(address);
-          setTransactionHash('');
-          setStages(prev => prev.map(s => ({ ...s, status: 'completed' })));
-          setDeploymentStatus('success');
-          onComplete?.(address);
-        } else {
-          setDeploymentStatus('error');
-          setErrorMessage('Deployment completed but no address returned');
+        const startRes = await fetch(`${API_BASE_URL}${API_ENDPOINTS.BUMM_DEPLOY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+          body: JSON.stringify({ text: textToSend }),
+        });
+
+        if (!startRes.ok) {
+          if (startRes.status === 402) throw new Error('Insufficient credits (75 needed)');
+          const err = await startRes.json().catch(() => ({}));
+          throw new Error(err.detail || `Deploy failed: ${startRes.status}`);
         }
+
+        const { uid: deployUid } = await startRes.json();
+
+        let attempts = 0;
+        while (!cancelled && attempts < 60) {
+          await new Promise(r => setTimeout(r, 3000));
+          attempts++;
+
+          const res = await fetch(
+            `${API_BASE_URL}${API_ENDPOINTS.BUMM_DEPLOY_STATUS}${deployUid}/`,
+            { headers: { 'x-user-id': userId } }
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          if (data.status === 'deployed') {
+            const addr = data.program_id || '';
+            setContractAddress(addr);
+            setTransactionHash('');
+            setStages(prev => prev.map(s => ({ ...s, status: 'completed' })));
+            setDeploymentStatus('success');
+            onComplete?.(addr);
+            return;
+          }
+          if (data.status === 'error') {
+            throw new Error(data.error || 'Deploy failed');
+          }
+        }
+
+        throw new Error('Deploy timed out');
       } catch (err) {
         if (cancelled) return;
         setDeploymentStatus('error');
@@ -116,9 +149,10 @@ export const DeployModal = ({ isOpen, onClose, onDeploy, onComplete, contractCod
         })));
       }
     };
-    runDeploy();
+
+    startDeploy();
     return () => { cancelled = true; };
-  }, [isOpen, contractCode, onDeploy]);
+  }, [isOpen, contractCode, bummUid, onComplete, currentStageIndex]);
 
   const getStageColor = (status: string) => {
     switch (status) {

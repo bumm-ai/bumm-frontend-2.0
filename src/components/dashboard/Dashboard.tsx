@@ -241,7 +241,13 @@ export default function Dashboard() {
           bummUid: response.bumm_uid,
           status: 'in-progress',
         };
+        // Обновляем текущий проект и список проектов, чтобы везде был корректный bummUid
         setCurrentProject(updatedProject);
+        updateProjects(prev =>
+          prev.some(p => p.uid === updatedProject.uid)
+            ? prev.map(p => (p.uid === updatedProject.uid ? updatedProject : p))
+            : [updatedProject, ...prev]
+        );
 
         // Add generation started message (will be updated with real status)
         const statusMessageId = generateUniqueMessageId();

@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Shield, AlertTriangle, CheckCircle, Search, FileText, Code, Zap } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { API_BASE_URL, API_ENDPOINTS } from '@/config/api';
 
 interface AuditModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface AuditModalProps {
   contractCode: string;
   onAddMessage?: (message: string) => void;
   messages?: Array<{ content: string; [key: string]: unknown }>;
+  bummUid?: string;
 }
 
 interface AuditStep {
@@ -83,7 +85,7 @@ const auditSteps: AuditStep[] = [
   }
 ];
 
-export const AuditModal = ({ isOpen, onClose, onComplete, contractCode, onAddMessage, messages }: AuditModalProps) => {
+export const AuditModal = ({ isOpen, onClose, onComplete, contractCode, onAddMessage, messages, bummUid }: AuditModalProps) => {
   
   // Function for displaying animated stage icons
   const getStageIcon = (step: AuditStep, index: number) => {
@@ -109,88 +111,114 @@ export const AuditModal = ({ isOpen, onClose, onComplete, contractCode, onAddMes
   const [displaySteps, setDisplaySteps] = useState<typeof auditSteps>(auditSteps);
   const [patchesApplied, setPatchesApplied] = useState(false);
 
+  // Реальный API-audit c использованием backend bummUid (если есть)
   useEffect(() => {
     if (!isOpen) {
-      setCurrentStep(0); setIsCompleted(false); setAuditResult(null);
+      setCurrentStep(0);
+      setIsCompleted(false);
+      setAuditResult(null);
       return;
     }
+
     let cancelled = false;
     let animInterval: NodeJS.Timeout;
 
     const runAudit = async () => {
       try {
         const userId = localStorage.getItem('bumm_user_uid') || '';
-        const startRes = await fetch('/api/backend/api/v1/bumm/audit/', {
+        const textToSend = bummUid || contractCode;
+
+        const startRes = await fetch(`${API_BASE_URL}${API_ENDPOINTS.BUMM_AUDIT}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-          body: JSON.stringify({ text: contractCode }),
+          body: JSON.stringify({ text: textToSend }),
         });
+
         if (!startRes.ok) {
           if (startRes.status === 402) {
             setIsCompleted(true);
-            onAddMessage?.('Insufficient credits for audit.');
+            onAddMessage?.('Insufficient credits for audit (50 credits needed)');
             return;
           }
-          throw new Error('Audit start failed');
+          throw new Error(`Audit start failed: ${startRes.status}`);
         }
+
         const { uid: auditUid } = await startRes.json();
 
-        // Animate steps while polling
+        // Анимация шагов во время опроса
         let step = 0;
         animInterval = setInterval(() => {
           if (cancelled) return;
-          step = Math.min(step + 1, displaySteps.length - 2);
+          step = Math.min(
+            step + 1,
+            (displaySteps?.length || auditSteps.length) - 2
+          );
           setCurrentStep(step);
-        }, 2000);
+        }, 2500);
 
         // Poll status
         let attempts = 0;
         while (!cancelled && attempts < 60) {
           await new Promise(r => setTimeout(r, 3000));
           attempts++;
-          const res = await fetch(`/api/backend/api/v1/bumm/audit/status/${auditUid}/`, {
-            headers: { 'x-user-id': userId },
-          });
+
+          const res = await fetch(
+            `${API_BASE_URL}${API_ENDPOINTS.BUMM_AUDIT_STATUS}${auditUid}/`,
+            { headers: { 'x-user-id': userId } }
+          );
           if (!res.ok) continue;
           const data = await res.json();
 
           if (data.status === 'audited' && data.report) {
             clearInterval(animInterval);
-            setCurrentStep(displaySteps.length - 1);
+            setCurrentStep((displaySteps?.length || auditSteps.length) - 1);
 
-            let report;
+            let report: any;
             try { report = JSON.parse(data.report); }
             catch { report = { issues: [], summary: data.report }; }
 
-            const issues = report.issues || [];
+            const issues = report.issues || report.vulnerabilities || [];
             const critical = issues.filter((i: any) => i.severity === 'critical').length;
             const high = issues.filter((i: any) => i.severity === 'high').length;
             const medium = issues.filter((i: any) => i.severity === 'medium').length;
-            const low = issues.filter((i: any) => ['low','info'].includes(i.severity)).length;
-            const score = Math.max(0, 100 - critical*25 - high*15 - medium*5 - low);
+            const low = issues.filter((i: any) => ['low', 'info'].includes(i.severity)).length;
+            const score = Math.max(0, 100 - critical * 25 - high * 15 - medium * 5 - low);
 
             setAuditResult({
               securityScore: score,
               vulnerabilities: { critical, high, medium, low },
-              vulnerabilityList: issues.map((i: any) => ({ name: i.title, severity: i.severity })),
+              vulnerabilityList: issues.map((i: any) => ({
+                name: i.title || i.name || i.description,
+                severity: i.severity,
+              })),
               hasPatches: critical > 0 || high > 0,
             });
             setIsCompleted(true);
-            onAddMessage?.(`Audit done! ${issues.length} issues, score ${score}/100`);
+            onAddMessage?.(`Audit complete! Score: ${score}/100 (${issues.length} issues found)`);
             return;
           }
-          if (data.status === 'error') throw new Error('Audit failed on backend');
+
+          if (data.status === 'error') {
+            throw new Error(data.error || 'Audit failed');
+          }
         }
+
+        throw new Error('Audit timed out');
       } catch (err) {
         console.error('Audit error:', err);
         setIsCompleted(true);
-        setAuditResult({ securityScore: 0, vulnerabilities: {critical:0,high:0,medium:0,low:0},
-          vulnerabilityList: [{name: String(err), severity: 'critical'}], hasPatches: false });
+        setAuditResult({
+          securityScore: 0,
+          vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
+          vulnerabilityList: [{ name: String(err), severity: 'critical' }],
+          hasPatches: false,
+        });
       }
     };
+
     runAudit();
     return () => { cancelled = true; if (animInterval) clearInterval(animInterval); };
-  }, [isOpen, contractCode]);
+  }, [isOpen, contractCode, bummUid, displaySteps, onAddMessage]);
 
   const handleNextStep = () => {
     onComplete(false);

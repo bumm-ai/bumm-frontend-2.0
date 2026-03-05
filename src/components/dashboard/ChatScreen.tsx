@@ -868,6 +868,7 @@ export default function ChatScreen({
         onComplete={handleBuildComplete}
         contractCode={contractCode}
         onAddMessage={onAddAIMessage}
+        bummUid={currentProject?.bummUid}
       />
 
       {/* Deploy Modal */}
@@ -878,6 +879,7 @@ export default function ChatScreen({
         onComplete={handleDeployComplete}
         contractCode={contractCode}
         network="devnet"
+        bummUid={currentProject?.bummUid}
       />
 
       {/* Audit Modal */}
@@ -888,6 +890,7 @@ export default function ChatScreen({
         contractCode={contractCode}
         onAddMessage={onAddAIMessage}
         messages={messages.map(msg => ({ ...msg }))}
+        bummUid={currentProject?.bummUid}
       />
     </motion.div>
   );

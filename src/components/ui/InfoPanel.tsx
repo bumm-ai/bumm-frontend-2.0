@@ -6,6 +6,7 @@ import { NetworkToggle } from './NetworkToggle';
 import { ContractMenu } from './ContractMenu';
 import ProjectsList from './ProjectsList';
 import { Project } from '@/types/dashboard';
+import { useCredits } from '@/hooks/useCredits';
 
 interface Contract {
   id: string;
@@ -57,7 +58,7 @@ export const InfoPanel = ({
     }
   ]);
 
-  const credits = 1000; // Mock credits - теперь управляется из HeaderCreditsButton
+  const { balance } = useCredits();
 
   const handleNetworkChange = (network: 'devnet' | 'mainnet') => {
     setCurrentNetwork(network);
@@ -144,7 +145,7 @@ export const InfoPanel = ({
           <div className="flex items-center justify-center gap-0.5">
             <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse"></div>
             <span className="text-orange-500 text-[12px] font-medium credits-text">
-              Credits: {credits.toLocaleString()}
+              Credits: {Math.floor(balance.balance).toLocaleString()}
             </span>
           </div>
           <p className="text-[8px] text-[#666] mt-1">Fuel for AI Brain</p>

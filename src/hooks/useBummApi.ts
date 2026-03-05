@@ -518,16 +518,31 @@ export const useBummApi = () => {
       setIsLoading(true);
       setError(null);
 
-      let textToSend: string = code;
+      // We must always send backend bummUid to /build/ (not raw code)
+      let bummUidForBuild: string | undefined;
+
+      // Prefer explicitly selected project
       if (projectUid) {
         const proj = projects.find(p => p.uid === projectUid);
         if (proj?.bummUid) {
-          textToSend = proj.bummUid;
+          bummUidForBuild = proj.bummUid;
         }
       }
 
+      // Fallback: try to find project by code with existing bummUid
+      if (!bummUidForBuild) {
+        const projWithCode = projects.find(p => p.code === code && p.bummUid);
+        if (projWithCode?.bummUid) {
+          bummUidForBuild = projWithCode.bummUid;
+        }
+      }
+
+      if (!bummUidForBuild) {
+        throw new Error('Cannot start build: backend project ID not found. Please generate the contract first.');
+      }
+
       const response = await apiCall(
-        () => bummService.buildBumm(textToSend),
+        () => bummService.buildBumm(bummUidForBuild!),
         () => mockApiClient.buildContract({ text: code }),
         'build contract'
       );
@@ -589,15 +604,21 @@ export const useBummApi = () => {
       setIsLoading(true);
       setError(null);
 
-      let textToSend: string = code;
-      // Try to find project with this code and use its bummUid when available
+      // Deploy endpoint also expects backend bummUid, not raw code
+      let bummUidForDeploy: string | undefined;
+
+      // Prefer project that matches code and already has bummUid
       const projWithCode = projects.find(p => p.code === code && p.bummUid);
       if (projWithCode?.bummUid) {
-        textToSend = projWithCode.bummUid;
+        bummUidForDeploy = projWithCode.bummUid;
+      }
+
+      if (!bummUidForDeploy) {
+        throw new Error('Cannot deploy: backend project ID not found. Please build the contract first.');
       }
 
       const contractAddress = await apiCall(
-        () => bummService.deployBumm(textToSend),
+        () => bummService.deployBumm(bummUidForDeploy!),
         () => mockApiClient.deployContract({ text: code }),
         'deploy contract'
       );

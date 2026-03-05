@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { useCredits } from '@/hooks/useCredits';
 import { CreditTransaction } from '@/services/creditService';
+import { API_BASE_URL } from '@/config/api';
 
 interface CreditHistoryProps {
   isOpen: boolean;
@@ -26,12 +27,21 @@ export const CreditHistory = ({ isOpen, onClose }: CreditHistoryProps) => {
     setIsLoading(true);
     try {
       const userId = localStorage.getItem('bumm_user_uid') || '';
-      const res = await fetch(`/api/backend/api/v1/credits/history?limit=50`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/credits/history?limit=50`, {
         headers: { 'x-user-id': userId }
       });
       if (res.ok) {
         const data = await res.json();
-        setTransactions(data.transactions || []);
+        const txList: CreditTransaction[] = (data.transactions || []).map((tx: any) => ({
+          id: tx.id,
+          operationType: tx.operationType,
+          creditsSpent: Math.abs(tx.creditsSpent),
+          usdEquivalent: Math.abs(tx.creditsSpent) * 0.01,
+          description: tx.description,
+          createdAt: tx.createdAt,
+          bummId: tx.bummId,
+        }));
+        setTransactions(txList);
       }
     } catch (error) {
       console.error('Failed to load credit history:', error);
